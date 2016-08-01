@@ -1,0 +1,4 @@
+<plugin>
+  <name>traitor-list</name>
+  <classname>com.dslplatform.traitorlist.TraitorList</classname>
+</plugin>
