@@ -1,6 +1,7 @@
 name := "traitor-list"
 
 libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
+libraryDependencies += "com.softwaremill.scalamacrodebug" %% "macros" % "0.4"
 
 scalaVersion := "2.11.8"
 scalacOptions ++= Seq(
@@ -8,7 +9,6 @@ scalacOptions ++= Seq(
   "-encoding", "UTF-8",
   "-feature",
   "-language:_",
-  "-optimise",
   "-unchecked",
 //  "-Xfatal-warnings",
   "-Xlint",
