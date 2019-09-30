@@ -1,3 +1,5 @@
+version := "1.1.1"
+
 scalaVersion := "2.12.10"
 scalacOptions ++= Seq(
   "-deprecation",
@@ -8,9 +10,6 @@ scalacOptions ++= Seq(
   "-Xlint:-unused,_",
 )
 
-traitorListSettings
+enablePlugins(TraitorListPlugin) 
 
-scalacOptions ++= Seq(
-  "-P:traitor-list:output:src/main/resources/META-INF/services",
-  "-P:traitor-list:traitors:com.dslplatform.example.Foo;com.dslplatform.example.Zoo"
-)
+traitorListTraitors := Seq("com.dslplatform.example.Foo")

@@ -1,8 +1,9 @@
 package com.dslplatform.traitorlist
 
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
-
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.tools.nsc.plugins.{Plugin, PluginComponent}
 import scala.tools.nsc.{Global, Phase}
@@ -49,7 +50,7 @@ class TraitorList(val global: Global) extends Plugin {
     val global: Global = TraitorList.this.global
 
     // sourceFile -> ( signature -> classes )
-    private[this] val results = mutable.Map.empty[String, mutable.TreeSet[String]]
+    private[this] val results = mutable.Map.empty[String, (String, mutable.TreeSet[String])]
 
     override def newPhase(prev: Phase): Phase = new StdPhase(prev) {
       override def run(): Unit = {
@@ -60,7 +61,7 @@ class TraitorList(val global: Global) extends Plugin {
 
       override def apply(unit: global.CompilationUnit): Unit = unit.body foreach {
         // match only public classes
-        case global.ClassDef(mods, simpleName, _, global.Template(parents, _, body))
+        case tree @ global.ClassDef(mods, simpleName, _, global.Template(parents, _, body))
           if mods.isPublic && (!mods.isTrait && !mods.isInterface) =>
 
           // couldn't find a way to neatly resolve the full class name of the class, so reading it from <init> return type
@@ -77,24 +78,41 @@ class TraitorList(val global: Global) extends Plugin {
 
           // if fully qualified base name matches one of traitors provided in plugin options
           for (current <- parents; base <- current.tpe.baseClasses if traitors(base.fullName)) {
+            val scalaType = current.tpe.baseType(base).toString
             // resolves inheritance; TODO: find a way to dealias type parameters
-            val signature = current.tpe.baseType(base).toString
+            val javaType = current.tpe.baseType(base).toString
               .replaceFirst("Array\\[([^]]+?)\\]", "$1%5B%5D") // TODO: smarter pattern
               .replace("[", "%3C")
               .replace("]", "%3E")
 
-            results.getOrElseUpdate(signature, mutable.TreeSet.empty[String]) += className
+            val uniqueMark = "__UNESCAPE__" + scala.util.Random.nextLong()
+            val unescape = javaType.replace("%", uniqueMark)
+            val fileCompatible = URLEncoder.encode(unescape, UTF_8).replace(uniqueMark, "%")
+            if (javaType != fileCompatible) {
+              global.reporter.error(tree.pos, s"Fancy signature types are not yet supported: $scalaType")
+            }
+
+            val (_, classes) = results.getOrElseUpdate(fileCompatible, (scalaType, mutable.TreeSet.empty))
+            classes += className
           }
 
         case _ =>
       }
 
       private[this] def dump(): Unit = {
-        for ((signature, classes) <- results) {
+        for ((signature, (scalaType, classes)) <- results) {
           val path = Path.of(outputPath.get, signature)
           val newBody = classes.mkString("", "\n", "").getBytes(UTF_8)
-          if (!path.toFile.exists ||
-              java.util.Arrays.equals(newBody, Files.readAllBytes(path))) {
+          val diff = if (path.toFile.exists) {
+            val oldClasses = mutable.TreeSet.empty[String] ++ Files.readAllLines(path, UTF_8).asScala
+            (oldClasses -- classes) ++ (classes -- oldClasses)
+          } else {
+            classes
+          }
+          if (diff.nonEmpty) {
+            for (clazz <- diff) {
+              println(s"Updated '$scalaType' services for '$clazz'")
+            }
             Files.write(path, newBody)
           }
         }
